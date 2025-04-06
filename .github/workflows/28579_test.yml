@@ -31,6 +31,7 @@ jobs:
       
       # Naložimo napaka.txt kot artefakt (ne glede na uspeh/neuspeh)
       - name: Shranjevanje status datoteke
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-check-status
