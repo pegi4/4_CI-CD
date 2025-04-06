@@ -1,0 +1,65 @@
+# Ime delovnega toka za deployment
+name: Deployment na DockerHub
+
+# Sproži se samo ko se test workflow uspešno zaključi
+on:
+  workflow_run:
+    workflows: ["CI Tests"]  # Ime test workflowa
+    types:
+      - completed
+    branches: [main]
+
+jobs:
+  # Preveri če so testi bili uspešni
+  check-tests:
+    name: Preverjanje uspešnosti testov
+    runs-on: self-hosted
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Preveri status testov
+        run: echo "Testi so bili uspešni, nadaljujem z deploymentom"
+
+  # Zgradi in objavi Docker image
+  deploy:
+    name: Deployment Docker zabojnikov
+    needs: check-tests  # Počaka na preverjanje testov
+    runs-on: self-hosted
+    
+    strategy:
+      matrix:
+        # Uporabimo matriko za različne komponente
+        component: [client, server]
+    
+    steps:
+      # Pridobimo kodo iz repozitorija
+      - name: Prenos kode
+        uses: actions/checkout@v3
+
+      # Prijava v DockerHub
+      - name: Prijava v DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Nastavimo Docker Buildx
+      - name: Nastavitev Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Zgradimo in objavimo Docker image
+      - name: Gradnja in objava ${{ matrix.component }} zabojnika
+        uses: docker/build-push-action@v4
+        with:
+          context: ./${{ matrix.component }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.component }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.component }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.component }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.component }}:buildcache,mode=max
+
+      # Beležimo uspešnost deploymenta
+      - name: Status deploymenta
+        run: |
+          echo "Uspešno objavljen ${{ matrix.component }} zabojnik na DockerHub"
+          echo "Tag: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.component }}:${{ github.sha }}" 
