@@ -2,3 +2,5 @@ server/.venv
 client/.venv
 __pycache__
 .pytest_cache
+.DS_Store
+Doc1.docx
