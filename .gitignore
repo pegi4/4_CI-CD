@@ -1,2 +1,4 @@
 server/.venv
 client/.venv
+__pycache__
+.pytest_cache
