@@ -22,7 +22,7 @@ jobs:
   # Zgradi in objavi Docker image
   deploy:
     name: Deployment Docker zabojnikov
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: check-tests  # Počaka na preverjanje testov
     runs-on: self-hosted
     
     strategy:
