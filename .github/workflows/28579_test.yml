@@ -9,10 +9,38 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    # Ime job-a za testiranje
-    name: Testiranje Python Aplikacije
-    # Uporabimo self-hosted runner namesto GitHub-hosted
+  # Prvi job - preverjanje obstoja testnih datotek
+  check-tests:
+    name: Preverjanje testnih datotek
+    runs-on: self-hosted
+    
+    steps:
+      # Pridobimo kodo iz repozitorija
+      - name: Prenos kode
+        uses: actions/checkout@v3
+      
+      # Preverimo če obstajajo vse potrebne testne datoteke
+      - name: Preverjanje test datotek
+        run: |
+          for component in client server; do
+            if [ ! -f "$component/test_$component.py" ]; then
+              echo "Manjkajoča test datoteka za $component" >> napaka.txt
+              exit 1
+            fi
+          done 2> napaka.txt
+      
+      # Naložimo napaka.txt kot artefakt (ne glede na uspeh/neuspeh)
+      - name: Shranjevanje status datoteke
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-check-status
+          path: napaka.txt
+          retention-days: 1
+
+  # Drugi job - izvajanje testov
+  run-tests:
+    name: Izvajanje testov
+    needs: check-tests  # Počakamo na prvi job
     runs-on: self-hosted
     
     strategy:
@@ -20,8 +48,23 @@ jobs:
         # Določimo verzije Python-a in komponente za testiranje
         python-version: [3.8, 3.9]
         component: [client, server]
-        
+    
     steps:
+      # Najprej prenesemo in preverimo status artefakt iz prvega joba
+      - name: Prenos status datoteke
+        uses: actions/download-artifact@v4
+        with:
+          name: test-check-status
+      
+      # Preverimo če je bilo kaj napak v prvem jobu
+      - name: Preverjanje napak
+        run: |
+          if [ -s napaka.txt ]; then
+            echo "Napake pri preverjanju testnih datotek:"
+            cat napaka.txt
+            exit 1
+          fi
+      
       # Pridobimo kodo iz repozitorija
       - name: Prenos kode
         uses: actions/checkout@v3
@@ -32,21 +75,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       
-      # Preverimo če obstajajo test datoteke
-      - name: Preverjanje test datotek
-        run: |
-          if [ ! -f "${{ matrix.component }}/test_${{ matrix.component }}.py" ]; then
-            echo "Manjkajoča test datoteka za ${{ matrix.component }}" > napaka.txt
-            cat napaka.txt
-            exit 1
-          fi
-
       # Namestimo potrebne pakete
       - name: Namestitev odvisnosti
         run: |
           python -m pip install --upgrade pip
           pip install pytest flask opencv-python numpy requests
-          # Če obstaja requirements.txt, ga namestimo
           if [ -f "${{ matrix.component }}/requirements.txt" ]; then
             pip install -r ${{ matrix.component }}/requirements.txt
           fi
@@ -57,13 +90,13 @@ jobs:
           cd ${{ matrix.component }}
           python -m pytest test_${{ matrix.component }}.py -v
         
-      # V primeru napake naložimo log datoteko (uporabljamo v4 namesto v2)
+      # V primeru napake naložimo log datoteko
       - name: Nalaganje error loga
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: error-log-${{ matrix.component }}
+          name: error-log-${{ matrix.component }}-py${{ matrix.python-version }}
           path: |
             napaka.txt
             ${{ matrix.component }}/*.log
-          retention-days: 5  # Določimo koliko dni naj se hranijo artifacts 
+          retention-days: 5 
