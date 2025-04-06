@@ -1,0 +1,69 @@
+# Ime delovnega toka za testiranje
+name: CI Tests
+
+# Določimo kdaj se sproži workflow
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    # Ime job-a za testiranje
+    name: Testiranje Python Aplikacije
+    # Uporabimo self-hosted runner namesto GitHub-hosted
+    runs-on: self-hosted
+    
+    strategy:
+      matrix:
+        # Določimo verzije Python-a in komponente za testiranje
+        python-version: [3.8, 3.9]
+        component: [client, server]
+        
+    steps:
+      # Pridobimo kodo iz repozitorija
+      - name: Prenos kode
+        uses: actions/checkout@v3
+      
+      # Nastavimo Python okolje
+      - name: Nastavitev Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      # Preverimo če obstajajo test datoteke
+      - name: Preverjanje test datotek
+        run: |
+          if [ ! -f "${{ matrix.component }}/test_${{ matrix.component }}.py" ]; then
+            echo "Manjkajoča test datoteka za ${{ matrix.component }}" > napaka.txt
+            cat napaka.txt
+            exit 1
+          fi
+
+      # Namestimo potrebne pakete
+      - name: Namestitev odvisnosti
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest flask opencv-python numpy requests
+          # Če obstaja requirements.txt, ga namestimo
+          if [ -f "${{ matrix.component }}/requirements.txt" ]; then
+            pip install -r ${{ matrix.component }}/requirements.txt
+          fi
+      
+      # Poženemo teste
+      - name: Zagon testov
+        run: |
+          cd ${{ matrix.component }}
+          python -m pytest test_${{ matrix.component }}.py -v
+        
+      # V primeru napake naložimo log datoteko (uporabljamo v4 namesto v2)
+      - name: Nalaganje error loga
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-log-${{ matrix.component }}
+          path: |
+            napaka.txt
+            ${{ matrix.component }}/*.log
+          retention-days: 5  # Določimo koliko dni naj se hranijo artifacts 
